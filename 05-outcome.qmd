@@ -2,7 +2,7 @@
 title: "Phase V: Outcomes and Strategic Portfolios"
 ---
 
-```r
+``` r
 #| label: load-state
 #| echo: false
 load("pva_state.RData")
@@ -13,7 +13,7 @@ library(knitr)
 
 We aggregate our massive multi-track simulation to extract quantiles and visually assess which conservation strategies succeed.
 
-```r
+``` r
 #| label: plots
 #| code-fold: false
 #| fig-width: 8
@@ -66,7 +66,7 @@ ggsave(filename = paste0(out_dir, "/Manuscript_Fig4_Net_Portfolio_Payoff.png"), 
 
 ### 100-Year Scenario Scorecard
 
-```r
+``` r
 #| label: scorecard
 #| code-fold: false
 

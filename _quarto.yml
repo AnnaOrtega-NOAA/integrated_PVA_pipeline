@@ -4,7 +4,7 @@ project:
 
 website:
   title: "Integrated PVA Pipeline"
-  description: "Conservation Portfolio Evaluation"
+  description: "conservation portfolio evaluation"
   site-url: "https://annaortega-noaa.github.io/integrated-pva-pipeline"
   repo-url: "https://github.com/AnnaOrtega-NOAA/integrated-pva-pipeline"
   search: true
@@ -29,7 +29,7 @@ website:
             file: index.qmd
           - text: "1. Biological Constraints"
             file: 01-setup.qmd
-          - text: "2. Virtual Reality (JAGS)"
+          - text: "2. Data Simulation and Imputation"
             file: 02-data.qmd
           - text: "3. Retrospective Demographics"
             file: 03-ane.qmd

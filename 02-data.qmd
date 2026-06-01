@@ -1,8 +1,8 @@
 ---
-title: "Phase II: Virtual Reality & Imputation"
+title: "Phase II: Data Simulation & Imputation"
 ---
 
-```r
+``` r
 #| label: load-state
 #| echo: false
 # Load variables from previous phase
@@ -13,9 +13,9 @@ library(ggplot2)
 library(jagsUI)
 ```
 
-Real-world data is messy. Here we generate synthetic data across three monitoring beaches and purposefully inject 30% missing data, which we will impute via a Bayesian state-space model.
+Real-world data are messy. Here we simulate a controlled synthetic dataset across three monitoring beaches and purposefully inject 30% missing data, which we then reconstruct using a Bayesian state-space model.
 
-```r
+``` r
 #| label: mock-data-and-jags
 #| code-summary: "Generate Synthetic Data & Run JAGS Imputation"
 #| results: hide
@@ -134,15 +134,13 @@ jags_data <- list(
 jags_params <- c("mu_obs", "beta_cos", "beta_sin", "u")
 
 # 4. Run JAGS
-
-# Write the model string to a temporary file so parallel workers can read it
 model_file_path <- tempfile(fileext = ".txt")
 writeLines(jags_seasonal_model, con = model_file_path)
 
 out_jags <- jags(
   data = jags_data,
   parameters.to.save = jags_params,
-  model.file = model_file_path, # Pass the file path instead of textConnection
+  model.file = model_file_path,
   n.chains = 3,
   n.iter = 5000,
   n.burnin = 1000,
@@ -174,10 +172,10 @@ mock_abundance <- mock_monthly %>%
 message(">>> Seasonal imputation complete. Annual totals reconstructed for PVA.")
 ```
 
-```r
+``` r
 #| label: trend-plot
 #| code-fold: false
-#| fig-cap: "Manuscript Fig 1: Baseline Trend Fit across simulated nesting beaches."
+#| fig-cap: "Figure 1: Baseline trend fit across simulated nesting beaches (Alpha, Beta, Gamma)."
 
 # ===============================================
 # 3. Baseline trend extraction from nesting data
@@ -198,6 +196,15 @@ p_fit <- ggplot(mock_abundance, aes(x = Year, y = log(Annual_Nests/sp_clutch_fre
 
 print(p_fit)
 ggsave(filename = paste0(out_dir, "/Manuscript_Fig1_Trend_Fit.png"), plot = p_fit, width = 7, height = 4.5)
+```
 
+### Historical Trend Visualization
+
+The state-space model successfully filters out the 30% missing data noise to extract the clean, underlying log-linear regional trend across all three monitoring sites.
+
+![Manuscript Fig 1: Regional Baseline Trend Fit](/img/trend_fit.png){width="85%" fig-align="center"}
+
+``` r
+#| echo: false
 save.image("pva_state.RData")
 ```
