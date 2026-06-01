@@ -3,13 +3,13 @@
 [![Website](https://img.shields.io/badge/Website-Live-brightgreen.svg)](https://annaortega-noaa.github.io/integrated_PVA_pipeline/)
 [![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-lightgrey.svg)](http://creativecommons.org/publicdomain/zero/1.0/)
 
-> **[🌐 View the Full Interactive Pipeline & Documentation Here](https://annaortega-noaa.github.io/integrated_PVA_pipeline/)**
+> **[View the full interactive pipeline & documentation here](https://annaortega-noaa.github.io/integrated_PVA_pipeline/)**
 
 ---
 
 ## Overview
 
-This repository contains an integrated Population Viability Analysis (PVA) pipeline designed to evaluate conservation portfolios. The tool assesses both the impact of human-wildlife interactions ("takes") and the efficacy of proactive conservation strategies on the long-term survival of generic long-lived protected populations (e.g., marine turtles).
+This repository contains an integrated Population Viability Analysis (PVA) pipeline designed to evaluate conservation portfolios. The tool assesses both the impact of human-wildlife interactions ("takes") and the efficacy of proactive conservation strategies ("gives") on the long-term survival of generic long-lived protected populations (e.g., marine turtles).
 
 This 100% self-contained, synthetic data-free pipeline connects three distinct modeling phases:
 1. **Data Imputation:** Filling gaps in historical nesting beach surveys using Bayesian state-space models via JAGS.
@@ -33,9 +33,9 @@ To build and run this pipeline on your local machine:
 
 ## Authors & Contributors
 
-* **Anna Ortega** - Cooperative Institute for Marine & Atmospheric Research, University of Hawaiʻi at Mānoa, Honolulu, Hawaiʻi
-* **Zachary Siders** - Fisheries and Aquatic Sciences Program, University of Florida, Gainesville, Florida
-* **Summer Martin** - Protected Species Division, Pacific Islands Fisheries Science Center, National Marine Fisheries Service, National Oceanic and Atmospheric Administration, Honolulu, Hawaiʻi
+* **Dr. Anna Ortega** - Cooperative Institute for Marine & Atmospheric Research, University of Hawaiʻi at Mānoa, Honolulu, Hawaiʻi
+* **Dr. Zachary Siders** - Fisheries and Aquatic Sciences Program, University of Florida, Gainesville, Florida
+* **Dr. Summer Martin** - Protected Species Division, Pacific Islands Fisheries Science Center, National Marine Fisheries Service, National Oceanic and Atmospheric Administration, Honolulu, Hawaiʻi
 
 ## License & Disclaimer
 
