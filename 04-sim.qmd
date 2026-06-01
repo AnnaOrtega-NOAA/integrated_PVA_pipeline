@@ -1,0 +1,213 @@
+---
+title: "Phase IV: The 8-Scenario Simulator"
+---
+
+```r
+#| label: load-state
+#| echo: false
+load("pva_state.RData")
+```
+
+We simulate forward for `r horizon` years across 8 independent arrays, isolating specific intervention impacts alongside a combined portfolio strategy.
+
+```r
+#| label: simulator-loop
+#| code-summary: "100-Year Forward Simulation Loop (8 Tracks)"
+#| cache: true
+
+# ==============================================================================
+# 5. 8-Scenario Simulator
+# ==============================================================================
+message(">>> Running 100-year forward portfolio engine over 8 independent strategy arrays...")
+
+# --- ALLOCATE EXPANDED 8-Scenario ARRAY SETS ---
+sim_notake   <- matrix(NA, n_sims, horizon) # Scenario 1: Unimpacted pristine baseline
+sim_take     <- matrix(NA, n_sims, horizon) # Scenario 2: Status Quo (Current threat, fishery take)
+sim_optA     <- matrix(NA, n_sims, horizon) # Scenario 3: Nest protections
+sim_optB     <- matrix(NA, n_sims, horizon) # Scenario 4: Juvenile headstarting
+sim_optC     <- matrix(NA, n_sims, horizon) # Scenario 5: Adult poaching ban
+sim_optD     <- matrix(NA, n_sims, horizon) # Scenario 6: Gear avoidance mitigation
+sim_optE     <- matrix(NA, n_sims, horizon) # Scenario 7: Safe handling
+sim_combined <- matrix(NA, n_sims, horizon) # Scenario 8: Combined management portfolio
+
+# kickoff of the loop with baseline starting population, all use real-world baseline except Scenario 1: pristine (no fishery)
+for(i in 1:n_sims) {
+  # Assign track initial steps
+  curr_nt <- start_pop_draws_adj[i]
+  curr_t  <- curr_A <- curr_B <- curr_C <- curr_D <- curr_E <- curr_comb <- start_pop_draws[i]
+
+  # Create empty deferred vectors for tracking dynamic timeline modifications
+  vec_loss_sq        <- rep(0, horizon) # Status Quo loss stream
+  vec_loss_optE      <- rep(0, horizon) # Reduced mortality (safe handling) loss stream
+  vec_gain_optA      <- rep(0, horizon) # Nest caging returns
+  vec_gain_optB      <- rep(0, horizon) # Headstart yearling returns
+  vec_gain_optC      <- rep(0, horizon) # Adult protection returns
+
+  # Pre-calculate yearling returns for Option A (Caging)
+  yearlings_produced_optA <- optA_nests_saved * sp_clutch_size * sp_hatch_success * sp_hatch_to_yearling
+
+  for(y in 1:horizon) {
+
+    # --------------------------------------------------------------------------
+    # Scenario 1: Demography Track (No-Take Baseline)
+    # --------------------------------------------------------------------------
+    curr_nt <- rnorm(1, curr_nt * exp(mock_posteriors_adj$U[i]), sqrt(mock_posteriors_adj$Q[i]))
+    sim_notake[i,y] <- curr_nt
+
+    # --------------------------------------------------------------------------
+    # Calculate fishery losses
+    # --------------------------------------------------------------------------
+    # Status Quo Take Engine (Tracks 2, 3, 4, 5)
+    takes_sq <- rCMP(1, mu = cmp_mu, nu = cmp_nu)
+    if (takes_sq > 0) {
+      for(t in 1:takes_sq) {
+        future_len <- rnorm(1, mean = 75, sd = 8) # calculates size
+        age_t <- sp_tknot - (1 / sp_k) * log(1 - (pmin(future_len, sp_linf - 0.1) / sp_linf)) # calculates age
+        if(is.nan(age_t) || is.na(age_t)) age_t <- sp_max_age - 2
+
+        rem_yrs   <- y:horizon; l_y <- length(rem_yrs)
+        ages_traj <- seq(age_t, length.out = l_y, by = 1)
+        lens_traj <- ifelse(ages_traj >= sp_max_age, rep(sp_linf * 0.99, l_y), sp_linf * (1 - exp(-sp_k * (ages_traj - sp_tknot))))
+        p_mat     <- 1.0 / (1.0 + exp(-(lens_traj - sp_lmat) / sp_sig_mat)) # when it would have matured
+        p_binom   <- rbinom(l_y, 1, p_mat)
+        if(any(p_binom == 1)) p_binom[min(which(p_binom == 1)):l_y] <- 1
+
+        surv_vector <- cumprod((1 - p_binom) * sp_ane_pj + p_binom * sp_ane_pa) # likelihood of surviving natural threats
+        future_mort <- runif(1, 0.3, 0.7)
+        sr          <- surv_vector * p_binom * sp_pf * future_mort * (1 / sp_remig_int)
+        vec_loss_sq[y:horizon] <- vec_loss_sq[y:horizon] + sr # writes the lost reproductive value into the calendar
+      }
+    }
+
+    # Gear avoidance mitigation (Scenario 6 - Option D)
+    # catch rate dropped from 15 to 4.5
+    takes_optD <- rCMP(1, mu = optD_cmp_mu_mitigated, nu = cmp_nu)
+    vec_loss_optD_annual <- 0
+    if (takes_optD > 0) {
+      vec_loss_optD_temp <- rep(0, horizon)
+      for(t in 1:takes_optD) {
+        future_len <- rnorm(1, mean = 75, sd = 8)
+        age_t <- sp_tknot - (1 / sp_k) * log(1 - (pmin(future_len, sp_linf - 0.1) / sp_linf))
+        if(is.nan(age_t) || is.na(age_t)) age_t <- sp_max_age - 2
+
+        rem_yrs   <- y:horizon; l_y <- length(rem_yrs)
+        ages_traj <- seq(age_t, length.out = l_y, by = 1)
+        lens_traj <- ifelse(ages_traj >= sp_max_age, rep(sp_linf * 0.99, l_y), sp_linf * (1 - exp(-sp_k * (ages_traj - sp_tknot))))
+        p_mat     <- 1.0 / (1.0 + exp(-(lens_traj - sp_lmat) / sp_sig_mat))
+        p_binom   <- rbinom(l_y, 1, p_mat)
+        if(any(p_binom == 1)) p_binom[min(which(p_binom == 1)):l_y] <- 1
+
+        surv_vector <- cumprod((1 - p_binom) * sp_ane_pj + p_binom * sp_ane_pa)
+        future_mort <- runif(1, 0.3, 0.7)
+        sr          <- surv_vector * p_binom * sp_pf * future_mort * (1 / sp_remig_int)
+        vec_loss_optD_temp[y:horizon] <- vec_loss_optD_temp[y:horizon] + sr
+      }
+      vec_loss_optD_annual <- vec_loss_optD_temp[y]
+    }
+
+    # Safe handling (Scenario 7 - Option E)
+    # Hooking mortality rate changes from 30-70% to 5-18%
+    if (takes_sq > 0) {
+      for(t in 1:takes_sq) {
+        future_len <- rnorm(1, mean = 75, sd = 8)
+        age_t <- sp_tknot - (1 / sp_k) * log(1 - (pmin(future_len, sp_linf - 0.1) / sp_linf))
+        if(is.nan(age_t) || is.na(age_t)) age_t <- sp_max_age - 2
+
+        rem_yrs   <- y:horizon; l_y <- length(rem_yrs)
+        ages_traj <- seq(age_t, length.out = l_y, by = 1)
+        lens_traj <- ifelse(ages_traj >= sp_max_age, rep(sp_linf * 0.99, l_y), sp_linf * (1 - exp(-sp_k * (ages_traj - sp_tknot))))
+        p_mat     <- 1.0 / (1.0 + exp(-(lens_traj - sp_lmat) / sp_sig_mat))
+        p_binom   <- rbinom(l_y, 1, p_mat)
+        if(any(p_binom == 1)) p_binom[min(which(p_binom == 1)):l_y] <- 1
+
+        surv_vector    <- cumprod((1 - p_binom) * sp_ane_pj + p_binom * sp_ane_pa)
+        future_mort_me <- runif(1, optE_mort_min, optE_mort_max) # Mitigated post-release mortality rate
+        sr             <- surv_vector * p_binom * sp_pf * future_mort_me * (1 / sp_remig_int)
+        vec_loss_optE[y:horizon] <- vec_loss_optE[y:horizon] + sr
+      }
+    }
+
+    # -----------------------------
+    # Calculate conservation gains
+    # -----------------------------
+    # Option A  (Nest Protection)
+    if (yearlings_produced_optA > 0) { # earlier calculation to get from eggs to yearlings
+      rem_yrs_A <- y:horizon; l_y_A <- length(rem_yrs_A)
+      ages_A    <- seq(1.0, length.out = l_y_A, by = 1)
+      lens_A    <- ifelse(ages_A >= sp_max_age, rep(sp_linf * 0.99, l_y_A), sp_linf * (1 - exp(-sp_k * (ages_A - sp_tknot))))
+      p_mat_A   <- 1.0 / (1.0 + exp(-(lens_A - sp_lmat) / sp_sig_mat))
+      p_binom_A <- rbinom(l_y_A, 1, p_mat_A)
+      if(any(p_binom_A == 1)) p_binom_A[min(which(p_binom_A == 1)):l_y_A] <- 1
+      surv_vector_A <- cumprod((1 - p_binom_A) * sp_ane_pj + p_binom_A * sp_ane_pa)
+      vec_gain_optA[y:horizon] <- vec_gain_optA[y:horizon] + (surv_vector_A * p_binom_A * sp_pf * (1 / sp_remig_int) * yearlings_produced_optA)
+    }
+
+    # Option B (Headstarting) # earlier calculation to get from eggs to headstarted yearlings
+    if (optB_headstarts_released > 0) {
+      rem_yrs_B <- y:horizon; l_y_B <- length(rem_yrs_B)
+      # Accelerate entry timeline: captive individuals enter directly at the release age
+      ages_B    <- seq(optB_release_age, length.out = l_y_B, by = 1)
+      lens_B    <- ifelse(ages_B >= sp_max_age, rep(sp_linf * 0.99, l_y_B), sp_linf * (1 - exp(-sp_k * (ages_B - sp_tknot))))
+      p_mat_B   <- 1.0 / (1.0 + exp(-(lens_B - sp_lmat) / sp_sig_mat))
+      p_binom_B <- rbinom(l_y_B, 1, p_mat_B)
+      if(any(p_binom_B == 1)) p_binom_B[min(which(p_binom_B == 1)):l_y_B] <- 1
+      surv_vector_B <- cumprod((1 - p_binom_B) * sp_ane_pj + p_binom_B * sp_ane_pa)
+      vec_gain_optB[y:horizon] <- vec_gain_optB[y:horizon] + (surv_vector_B * p_binom_B * sp_pf * (1 / sp_remig_int) * optB_headstarts_released)
+    }
+
+    # Option C (Adult nester protection)
+    if (optC_adults_saved > 0) {
+      rem_yrs_C <- y:horizon; l_y_C <- length(rem_yrs_C)
+      # Zero development time-lag: Saved beach adults return immediate reproductive dividends
+      ages_C    <- seq(35.0, length.out = l_y_C, by = 1)
+      lens_C    <- rep(sp_linf * 0.99, l_y_C)
+      p_binom_C <- rep(1, l_y_C) # Adults are 100% mature at start
+      surv_vector_C <- cumprod(p_binom_C * sp_ane_pa)
+      vec_gain_optC[y:horizon] <- vec_gain_optC[y:horizon] + (surv_vector_C * p_binom_C * (1 / sp_remig_int) * optC_adults_saved)
+    }
+
+    # --------------------------------------------------------------------------
+    # Compute all the tracks for all scenarios
+    # --------------------------------------------------------------------------
+    # Scenario 2: Status Quo (SQ) - isolated threat only, here, fisheries mortality
+    curr_t <- rnorm(1, (curr_t - vec_loss_sq[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_take[i,y] <- curr_t
+
+    # Scenario 3: Option A (Nest protection vs SQ Threats)
+    curr_A <- rnorm(1, (curr_A - vec_loss_sq[y] + vec_gain_optA[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_optA[i,y] <- curr_A
+
+    # Scenario 4: Option B (Headstart vs SQ Threats)
+    curr_B <- rnorm(1, (curr_B - vec_loss_sq[y] + vec_gain_optB[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_optB[i,y] <- curr_B
+
+    # Scenario 5: Option C (Adult protection vs SQ Threats)
+    curr_C <- rnorm(1, (curr_C - vec_loss_sq[y] + vec_gain_optC[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_optC[i,y] <- curr_C
+
+    # Scenario 6: Option D (Gear avoidance mitigation)
+    curr_D <- rnorm(1, (curr_D - vec_loss_optD_annual) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_optD[i,y] <- curr_D
+
+    # Scenario 7: Option E (Safe handling mitigation)
+    curr_E <- rnorm(1, (curr_E - vec_loss_optE[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_optE[i,y] <- curr_E
+
+    # Scenario 8: Combined Portfolio (All mitigation options together (nest protection, headstarting, adult protection, gear avoidance, and safe handling))
+    curr_comb <- rnorm(1, (curr_comb - vec_loss_optE[y] + vec_gain_optA[y] + vec_gain_optB[y] + vec_gain_optC[y]) * exp(mock_posteriors$U[i]), sqrt(mock_posteriors$Q[i]))
+    sim_combined[i,y] <- curr_comb
+  }
+
+  # Structural Absorbing Barriers (Locking crashed replicates cleanly to 0); you can't return from extirpation
+  if(any(sim_notake[i,] < 0))   { sim_notake[i, min(which(sim_notake[i,] < 0)):horizon]   <- 0 }
+  if(any(sim_take[i,] < 0))     { sim_take[i, min(which(sim_take[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_optA[i,] < 0))     { sim_optA[i, min(which(sim_optA[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_optB[i,] < 0))     { sim_optB[i, min(which(sim_optB[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_optC[i,] < 0))     { sim_optC[i, min(which(sim_optC[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_optD[i,] < 0))     { sim_optD[i, min(which(sim_optD[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_optE[i,] < 0))     { sim_optE[i, min(which(sim_optE[i,] < 0)):horizon]     <- 0 }
+  if(any(sim_combined[i,] < 0)) { sim_combined[i, min(which(sim_combined[i,] < 0)):horizon] <- 0 }
+}
+
+save.image("pva_state.RData")
+```

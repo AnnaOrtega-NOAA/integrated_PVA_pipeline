@@ -1,0 +1,57 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Integrated PVA Pipeline"
+  description: "Conservation Portfolio Evaluation"
+  site-url: "https://annaortega-noaa.github.io/integrated-pva-pipeline"
+  repo-url: "https://github.com/AnnaOrtega-NOAA/integrated-pva-pipeline"
+  search: true
+  repo-actions: [edit, issue]
+  
+  navbar:
+    background: primary
+    search: true
+    left:
+      - text: "Overview"
+        file: index.qmd
+
+  sidebar:
+    style: "floating"
+    collapse-level: 1
+    pinned: true
+    border: true
+    contents:
+      - section: "Pipeline Workflow"
+        contents:
+          - text: "Overview"
+            file: index.qmd
+          - text: "1. Biological Constraints"
+            file: 01-setup.qmd
+          - text: "2. Virtual Reality (JAGS)"
+            file: 02-data.qmd
+          - text: "3. Retrospective Demographics"
+            file: 03-ane.qmd
+          - text: "4. 8-Scenario Simulator"
+            file: 04-sim.qmd
+          - text: "5. Strategic Portfolios"
+            file: 05-outcome.qmd
+
+format:
+  html:
+    theme: 
+      light: flatly
+      dark: darkly
+    toc: true
+    toc-title: "On this page"
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    code-copy: true
+    smooth-scroll: true
+    mainfont: "Inter, sans-serif"
+
+execute:
+  warning: false
+  message: false

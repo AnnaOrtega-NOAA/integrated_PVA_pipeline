@@ -1,0 +1,23 @@
+{
+  "index.qmd": {
+    "index.html": "ad58dc76"
+  },
+  "01-setup.qmd": {
+    "01-setup.html": "0ede9b09"
+  },
+  "02-data.qmd": {
+    "02-data.html": "925a3d04"
+  },
+  "03-ane.qmd": {
+    "03-ane.html": "1561104c"
+  },
+  "04-sim.qmd": {
+    "04-sim.html": "3f0e203c"
+  },
+  "05-outcome.qmd": {
+    "05-outcome.html": "366ca71f"
+  },
+  "archive_onepage/integrated_PVA_vignette.qmd": {
+    "integrated_PVA_vignette.html": "6ea4846f"
+  }
+}

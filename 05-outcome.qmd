@@ -1,0 +1,93 @@
+---
+title: "Phase V: Outcomes and Strategic Portfolios"
+---
+
+```r
+#| label: load-state
+#| echo: false
+load("pva_state.RData")
+library(ggplot2)
+library(dplyr)
+library(knitr)
+```
+
+We aggregate our massive multi-track simulation to extract quantiles and visually assess which conservation strategies succeed.
+
+```r
+#| label: plots
+#| code-fold: false
+#| fig-width: 8
+#| fig-height: 6
+
+# ==============================================================================
+# 6. Export outputs (figures and tables)
+# ==============================================================================
+message(">>> Composing conservation portfolio evaluation outputs")
+
+yrs_proj <- (max(hist_years) + 1):(max(hist_years) + horizon)
+
+generate_quantiles <- function(mat, label) {
+  data.frame(
+    Year = yrs_proj, Median = apply(mat, 2, median),
+    L95 = apply(mat, 2, function(x) quantile(x, 0.025)),
+    U95 = apply(mat, 2, function(x) quantile(x, 0.975)), Scenario = label
+  )
+}
+
+# Consolidate core display trajectories
+plot_df <- bind_rows(
+  generate_quantiles(sim_notake, "Pristine Baseline (No Take)"),
+  generate_quantiles(sim_take, "Status Quo Threats Only"),
+  generate_quantiles(sim_optA, "Option A: Nest protection"),
+  generate_quantiles(sim_optB, "Option B: Headstarting"),
+  generate_quantiles(sim_optC, "Option C: Poaching cessation"),
+  generate_quantiles(sim_combined, "Combined Recovery Portfolio")
+)
+
+# --- PVA overlay status quo with all options ---
+p_overlay <- ggplot(plot_df, aes(x = Year, y = Median, color = Scenario, fill = Scenario)) +
+  geom_line(linewidth = 1.2) + geom_ribbon(aes(ymin = L95, ymax = U95), alpha = 0.08, color = NA) +
+  theme_bw() + theme(legend.position = "bottom", legend.direction = "vertical") +
+  labs(title = "Manuscript Fig 3: Multi-Option Conservation Portfolio Projections", y = "Total Mature Population Size")
+
+print(p_overlay)
+ggsave(filename = paste0(out_dir, "/Manuscript_Fig3_PVA_Portfolio_Overlay.png"), plot = p_overlay, width = 8, height = 6)
+
+# --- Net loss (population change) ---
+df_net_comb <- generate_quantiles(sim_combined - sim_take, "Net Portfolio Gain")
+p_diff <- ggplot(df_net_comb, aes(x = Year, y = Median)) +
+  geom_line(color = "darkorchid4", linewidth = 1.2) +
+  geom_ribbon(aes(ymin = L95, ymax = U95), fill = "darkorchid", alpha = 0.20) +
+  theme_bw() + labs(title = "Manuscript Fig 4: Net Combined Portfolio Payoff Timeline", y = "Net Abundance Gain (\u0394 Population)")
+
+print(p_diff)
+ggsave(filename = paste0(out_dir, "/Manuscript_Fig4_Net_Portfolio_Payoff.png"), plot = p_diff, width = 8, height = 4)
+```
+
+### 100-Year Scenario Scorecard
+
+```r
+#| label: scorecard
+#| code-fold: false
+
+# --- All scenario 100 year comparison ---
+scorecard_table <- data.frame(
+  Management_Strategy_Track = c(
+    "1. Pristine Baseline (No Take)", "2. Status Quo Realized Threats",
+    "3. Option A (Nest Protections)", "4. Option B (Headstarting Enhancements)",
+    "5. Option C (Poaching Cessation)", "6. Option D (Gear Avoidance Closures)",
+    "7. Option E (Handling Severity Mitigation)", "8. Combined Strategic Portfolio"
+  ),
+  Median_100_Year_Abundance_Horizon = c(
+    median(sim_notake[, horizon]), median(sim_take[, horizon]),
+    median(sim_optA[, horizon]), median(sim_optB[, horizon]),
+    median(sim_optC[, horizon]), median(sim_optD[, horizon]),
+    median(sim_optE[, horizon]), median(sim_combined[, horizon])
+  )
+)
+
+knitr::kable(scorecard_table, caption = "Table 1: Comprehensive PVA 100-Year Scorecard", digits = 1)
+write.csv(scorecard_table, paste0(out_dir, "/Manuscript_Table1_Comprehensive_PVA_Scorecard.csv"), row.names = FALSE)
+
+message("EXECUTION SUCCESSFUL. All multi-scenario outputs have been compiled and saved to: ", out_dir)
+```

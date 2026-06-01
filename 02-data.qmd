@@ -1,0 +1,203 @@
+---
+title: "Phase II: Virtual Reality & Imputation"
+---
+
+```r
+#| label: load-state
+#| echo: false
+# Load variables from previous phase
+load("pva_state.RData")
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(jagsUI)
+```
+
+Real-world data is messy. Here we generate synthetic data across three monitoring beaches and purposefully inject 30% missing data, which we will impute via a Bayesian state-space model.
+
+```r
+#| label: mock-data-and-jags
+#| code-summary: "Generate Synthetic Data & Run JAGS Imputation"
+#| results: hide
+
+# ====================================================================
+# 2. Synthetic historical data generation matrix (making fake data)
+# ====================================================================
+message(">>> Constructing data matrices for synthetic portfolio evaluation...")
+
+# Simulate tracking data lines across three sample monitoring nesting beaches, Alpha, Beta, Gamma
+mock_abundance <- expand.grid(Year = hist_years, Site = c("Alpha_Beach", "Beta_Beach", "Gamma_Beach")) %>%
+  mutate(
+    True_Females = ifelse(Site == "Alpha_Beach", 450, ifelse(Site == "Beta_Beach", 280, 180)) * exp(-0.025 * (Year - 2000)) * runif(n(), 0.75, 1.25),
+    Annual_Nests = round(True_Females * sp_clutch_freq)
+  )
+
+# Simulate fishery observer length and mortality measurements
+mock_observer <- data.frame(
+  Year = sort(sample(hist_years[hist_years >= 2005], 50, replace = TRUE)),
+  Species = "Mock_Sea_Turtle",
+  SCL_raw = round(rnorm(50, mean = 76.5, sd = 9.8), 1),
+  M_mu = round(runif(50, min = 0.25, max = 0.75), 3)
+)
+
+# Simulate total fleet-wide interaction estimates (SAFE compliance accounts)
+mock_safe <- data.frame(Year = hist_years) %>%
+  mutate(Total_Est = ifelse(Year < 2005, 0, round(rnorm(n(), mean = 22, sd = 3))))
+
+# ==============================================================================
+# 2.5 Bayesian Seasonal Imputation of Missing Monthly Data
+# ==============================================================================
+message(">>> Generating monthly seasonal data, injecting gaps, and running JAGS imputation...")
+
+# 1. Create a monthly dataset with a simulated seasonal wave (peak in summer)
+months_total <- n_hist_yrs * 12
+mock_monthly <- expand.grid(
+  Month_Idx = 1:months_total,
+  Site = c("Alpha_Beach", "Beta_Beach", "Gamma_Beach")
+) %>%
+  mutate(
+    # Derive Year and Month mathematically so it maps perfectly to the 756 rows
+    Year = min(hist_years) + floor((Month_Idx - 1) / 12),
+    Month = (Month_Idx - 1) %% 12 + 1,
+
+    # Base annual trend
+    True_Base = ifelse(Site == "Alpha_Beach", 450,
+                       ifelse(Site == "Beta_Beach", 280, 180)) * exp(-0.025 * (Year - min(hist_years))),
+
+    # Add trigonometric seasonality: strong peak around month 6/7
+    Seasonal_Multiplier = pmax(0.1, 1 + 0.8 * cos(2 * pi * (Month - 6.5) / 12)),
+    True_Nests = (True_Base / 12) * Seasonal_Multiplier * runif(n(), 0.8, 1.2),
+
+    # Poke holes to create missing data (30% missing)
+    Observed_Nests = ifelse(runif(n()) < 0.30, NA, round(True_Nests))
+  )
+
+# Reshape for JAGS (Sites as rows, Months as columns)
+obs_matrix <- mock_monthly %>%
+  select(Month_Idx, Site, Observed_Nests) %>%
+  pivot_wider(names_from = Month_Idx, values_from = Observed_Nests) %>%
+  select(-Site) %>%
+  as.matrix()
+
+# 2. Define the JAGS state-space model with seasonal harmonics
+jags_seasonal_model <- "
+model {
+  for (i in 1:n_sites) {
+    # Initial state
+    X[i, 1] ~ dnorm(mu0, tau0)
+
+    # Site-specific seasonal parameters
+    beta_cos[i] ~ dnorm(0, 0.01)
+    beta_sin[i] ~ dnorm(0, 0.01)
+
+    for (t in 1:n_months) {
+      # Trigonometric seasonal component
+      seasonality[i, t] <- beta_cos[i] * cos(2 * pi * month_seq[t] / period) +
+                           beta_sin[i] * sin(2 * pi * month_seq[t] / period)
+
+      # Combined expected mean (underlying state + seasonality)
+      mu_obs[i, t] <- X[i, t] + seasonality[i, t]
+      Y[i, t] ~ dnorm(mu_obs[i, t], tau_obs)
+    }
+
+    # Random walk for the underlying annual trend
+    for (t in 2:n_months) {
+      X[i, t] ~ dnorm(X[i, t-1] + u, tau_proc)
+    }
+  }
+
+  # Global Priors
+  mu0 ~ dnorm(0, 0.001)
+  tau0 <- pow(sigma0, -2)
+  sigma0 ~ dunif(0, 100)
+
+  u ~ dnorm(0, 0.001)
+  tau_proc <- pow(sigma_proc, -2)
+  sigma_proc ~ dunif(0, 100)
+
+  tau_obs <- pow(sigma_obs, -2)
+  sigma_obs ~ dunif(0, 100)
+}
+"
+
+# 3. Bundle the monthly data
+jags_data <- list(
+  Y = log(obs_matrix + 1), # Log-transform to stabilize variance
+  n_sites = nrow(obs_matrix),
+  n_months = ncol(obs_matrix),
+  month_seq = rep(1:12, times = n_hist_yrs),
+  period = 12, # 12 months in a standard annual nesting cycle
+  pi = pi
+)
+
+# Monitor the combined mean (mu_obs) to extract our imputed values
+jags_params <- c("mu_obs", "beta_cos", "beta_sin", "u")
+
+# 4. Run JAGS
+
+# Write the model string to a temporary file so parallel workers can read it
+model_file_path <- tempfile(fileext = ".txt")
+writeLines(jags_seasonal_model, con = model_file_path)
+
+out_jags <- jags(
+  data = jags_data,
+  parameters.to.save = jags_params,
+  model.file = model_file_path, # Pass the file path instead of textConnection
+  n.chains = 3,
+  n.iter = 5000,
+  n.burnin = 1000,
+  n.thin = 2,
+  parallel = TRUE,
+  verbose = FALSE
+)
+
+# Clean up the temporary file afterward
+unlink(model_file_path)
+
+# 5. Extract the median imputed values
+imputed_log_matrix <- out_jags$q50$mu_obs
+imputed_nests <- exp(imputed_log_matrix) - 1
+
+# 6. Merge imputed values and aggregate back into annual totals for the PVA
+mock_abundance <- mock_monthly %>%
+  arrange(Site, Month_Idx) %>%
+  mutate(
+    Imputed_Nests = pmax(0, as.vector(t(imputed_nests))), # Ensure no negative nests
+    Final_Monthly_Nests = ifelse(is.na(Observed_Nests), Imputed_Nests, Observed_Nests)
+  ) %>%
+  group_by(Year, Site) %>%
+  summarise(
+    Annual_Nests = sum(Final_Monthly_Nests),
+    .groups = "drop"
+  )
+
+message(">>> Seasonal imputation complete. Annual totals reconstructed for PVA.")
+```
+
+```r
+#| label: trend-plot
+#| code-fold: false
+#| fig-cap: "Manuscript Fig 1: Baseline Trend Fit across simulated nesting beaches."
+
+# ===============================================
+# 3. Baseline trend extraction from nesting data
+# ===============================================
+message(">>> Simulating state-space posterior variance structures...")
+
+# extracts the background population growth rate (U) and process variance (Q)
+mock_posteriors <- list(
+  U = rnorm(n_sims, mean = -0.028, sd = 0.004), # Regional trend posterior distribution
+  Q = rgamma(n_sims, shape = 2, rate = 45)      # Process noise variance distribution
+)
+start_pop_draws <- rnorm(n_sims, mean = 720, sd = 45) * sp_remig_int
+
+# --- Manuscript figure, Trend Fit with three nesting beaches ---
+p_fit <- ggplot(mock_abundance, aes(x = Year, y = log(Annual_Nests/sp_clutch_freq), color = Site)) +
+  geom_point(size = 2) + geom_line(alpha = 0.5) +
+  theme_minimal() + labs(y = "log(Annual Nesting Cohort)")
+
+print(p_fit)
+ggsave(filename = paste0(out_dir, "/Manuscript_Fig1_Trend_Fit.png"), plot = p_fit, width = 7, height = 4.5)
+
+save.image("pva_state.RData")
+```

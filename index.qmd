@@ -1,0 +1,63 @@
+---
+title: "Integrated Population Viability Analysis (PVA): conservation portfolio evaluation"
+format: html
+editor: visual
+---
+
+| 
+| **Anna Ortega**
+| Cooperative Institute for Marine & Atmospheric Research, University of Hawaiʻi at Mānoa, Honolulu, Hawaiʻi
+| 
+| **Zachary Siders**
+| Fisheries and Aquatic Sciences Program, University of Florida, Gainesville, Florida
+| 
+| **Summer Martin**
+| Protected Species Division, Pacific Islands Fisheries Science Center, National Marine Fisheries Service, National Oceanic and Atmospheric Administration, Honolulu, Hawaiʻi
+| 
+| 
+
+![](/img/logos.png){width="60%" fig-align="center"}
+
+| 
+| 
+
+### Summary
+
+Population assessments are used to inform management by quantifying the negative impact of threats or the positive impact of conservation actions on the long-term growth rate and abundance of a population. In this vignette, we examine the impacts of a multi-threat baseline (e.g., status quo fishery interactions) and evaluate five independent conservation options alongside a combined management portfolio. We estimate trends and abundance for a generic long-lived protected population (e.g., marine turtles) using a 100% self-contained, synthetic data-free pipeline. The analysis presented here builds on methods developed for two NOAA Technical Memorandums ([NOAA-TM-NMFS-PIFSC-95](https://repository.library.noaa.gov/view/noaa/23037) and [NOAA-TM-NMFS-PIFSC-101](https://repository.library.noaa.gov/view/noaa/24251)), extending those foundational frameworks into a streamlined, reproducible evaluation tool.
+
+## Overview
+
+This vignette documents an integrated Population Viability Analysis (PVA) pipeline. The goal of this tool is to assess both the impact of human-wildlife interactions ("takes") and the efficacy of proactive conservation strategies on the long-term survival of a species. It connects three distinct modeling phases:
+
+1.  **Data Imputation:** Filling gaps in historical nesting beach surveys using Bayesian state-space models via JAGS.
+2.  **Demographic Translation:** Implementing symmetric lifecycle algebra to convert "Takes" into "Adult Nester Equivalents" (ANE) to map retrospective demographic conversions.
+3.  **Projection:** Simulating future population trends over a 100-year evaluation horizon across 8 unique management tracks:
+    - **Track 1: Pristine baseline** (Unimpacted counterfactual with no historical or future fishery take).
+    - **Track 2: Status Quo** (Realized threats under current baseline fishery interaction levels).
+    - **Track 3: Option A** (Nest protection / caging out predators).
+    - **Track 4: Option B** (Juvenile headstarting to yearling releases).
+    - **Track 5: Option C** (Cessation of beach poaching of mature nesting adult females).
+    - **Track 6: Option D** (Gear avoidance/closures to mitigate interaction rates).
+    - **Track 7: Option E** (Safe handling and circle hooks to reduce post-release mortality).
+    - **Track 8: Combined portfolio** (Concurrent implementation of Options A–E).
+
+The primary goals of this project are to (1) expand traditional population assessments to capture the positive impact of diverse conservation actions, and (2) provide an open-access, fully automated workflow for this population assessment method to be easily reproduced and adapted for other species or regions.
+
+### R code
+
+R script files to execute the population assessments described here can be found in the GitHub repository for this webpage.
+
+### License
+
+As a work by US federal employees as part of their official duties, this project is in the public domain within the United States of America. Additionally, we waive copyright and related rights in the work worldwide through the CC0 1.0 Universal public domain dedication.
+
+### NOAA Disclaimer
+
+*This repository is a scientific product and is not official communication of the National Oceanic and Atmospheric Administration, or the United States Department of Commerce. All NOAA GitHub project code is provided on an 'as is' basis and the user assumes responsibility for its use. Any claims against the Department of Commerce or Department of Commerce bureaus stemming from the use of this GitHub project will be governed by all applicable Federal law. Any reference to specific commercial products, processes, or services by service mark, trademark, manufacturer, or otherwise, does not constitute or imply their endorsement, recommendation or favoring by the Department of Commerce. The Department of Commerce seal and logo, or the seal and logo of a DOC bureau, shall not be used in any manner to imply endorsement of any commercial product or activity by DOC or the United States Government.*
+
+| 
+| 
+| 
+| 
+| 
+| 

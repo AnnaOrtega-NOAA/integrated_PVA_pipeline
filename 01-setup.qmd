@@ -1,0 +1,125 @@
+---
+title: "Phase I: Initialization and Biological Constraints"
+---
+
+First, we load our core packages and establish the underlying Conway-Maxwell-Poisson (CMP) mathematical utilities that keep our equations stable.
+
+```r
+#| label: setup-and-math
+#| code-summary: "Load Packages & Define CMP Math Utilities"
+
+# --- Load core packages ---
+library(dplyr) # data reshaping
+library(tidyr) # data reshaping
+library(ggplot2) # plotting
+library(mvtnorm) # statistical probability distributions
+library(truncnorm) # statistical probability distributions
+library(jagsUI) # Bayesian modeling
+
+# --- Establish directory routing  ---
+out_dir <- paste0(getwd(), "/EcolApps_Output")
+if(!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+message("Initialization successful. Directing output to: ", out_dir)
+
+
+# ==============================================================================
+# 0. Fixed CMP (Conway-Maxwell-Poisson) mathematical utilities
+# ==============================================================================
+# handles complex underlying calculus to keep equations stable
+compute_CMP_constant <- function(Lambda, Nu, Mu, Tol, Max, Log=TRUE, Type="Z"){
+  if( (!is.na(Lambda) & Lambda > 10^Nu) | (!is.na(Mu) & Mu^Nu > 10^Nu) ){
+    if(Type=="Z"){ ln_Const = Nu*Lambda^(1/Nu) - ((Nu-1)/(2*Nu))*log(Lambda) - ((Nu-1)/2)*log(2*pi) - (1/2)*log(Nu) }
+    if(Type=="S"){ ln_Const = Nu*Mu - ((Nu-1)/(2))*log(Mu) - ((Nu-1)/2)*log(2*pi) - (1/2)*log(Nu) }
+  }else{
+    Const = rep(0,Max+1); Index = 1; Const[Index] = 1
+    while( Const[Index]/Const[1] > Tol ){
+      if(Type=="Z") Const[Index+1] = Const[Index] * ( Lambda / Index^Nu )
+      if(Type=="S") Const[Index+1] = Const[Index] * ( Mu / Index )^Nu; Index = Index + 1
+    }
+    ln_Const = log(sum(Const))
+  }
+  if(Log) return(ln_Const) else return(exp(ln_Const))
+}
+
+# calculates the mathematical odds of hitting a specific number of caught turtles
+dCMP <- function( x, lambda, mu, nu, log=TRUE, tol=0.01, iter.max=200 ){
+  if(missing(mu) & !missing(lambda)) loglike = x*log(lambda) - nu*lfactorial(x) - compute_CMP_constant(Lambda=lambda, Nu=nu, Mu=NA, Tol=tol, Max=iter.max, Log=TRUE, Type="Z")
+  if(!missing(mu) & missing(lambda)) loglike = nu*x*log(mu) - nu*lfactorial(x) - compute_CMP_constant(Lambda=NA, Nu=nu, Mu=mu, Tol=tol, Max=iter.max, Log=TRUE, Type="S")
+  if(log) return(loglike) else return(exp(loglike))
+}
+
+# random number generator to simulate a realistic fishing year, based on the odds above
+rCMP <- function( n, lambda, mu, nu, tol=0.01, x_max=200 ){
+  loglike_x = rep(NA, x_max+1)
+  for( x in 0:x_max ){
+    if(missing(mu) & !missing(lambda)) loglike_x[x+1] = dCMP( x=x, lambda=lambda, nu=nu, log=TRUE, tol=tol, iter.max=x_max)
+    if(!missing(mu) & missing(lambda)) loglike_x[x+1] = dCMP( x=x, mu=mu, nu=nu, log=TRUE, tol=tol, iter.max=x_max)
+  }
+  return(sample(x=0:x_max, size=n, replace=TRUE, prob=exp(loglike_x)))
+}
+
+# --- PRIMARY COHORT DATA MATH TRANSFORMS ---
+inv_logit  <- function(x) { exp(x) / (1 + exp(x)) }
+safe_logit <- function(x) { x_safe <- pmax(0.001, pmin(0.999, x)); log(x_safe / (1 - x_safe)) }
+```
+
+### Defining the Species and Threats
+Before projecting into the future, we define the life-history parameters and the conservation interventions we plan to test. 
+
+```r
+#| label: biology-constants
+#| code-fold: false
+
+# =========================================================================================
+# 1. Baseline demography and multi-option intervention constants (EDIT for your population)
+# =========================================================================================
+# --- Simulation set up ---
+set.seed(42) # Locks the randomizer seed for identical results every run
+n_sims        <- 500   # Monte Carlo simulation sample size
+horizon       <- 100   # Evaluation horizon window
+hist_years    <- 2000:2020
+n_hist_yrs    <- length(hist_years)
+
+# --- Standard species demographic rates ---
+# Eventually, the full version will allow you to calculate these based on data inputs
+sp_clutch_freq <- 4.0    # Average nests per female per year
+sp_remig_int   <- 3.0    # Adult female remigration interval (years)
+sp_ane_pj      <- 0.82   # Juvenile age-class annual survival
+sp_ane_pa      <- 0.92   # Mature adult female annual survival
+sp_linf        <- 105.0  # Asymptotic maximum Straight Carapace Length (SCL, cm)
+sp_k           <- 0.12   # VBGF somatic growth parameter
+sp_tknot       <- -1.5   # Theoretical age at length zero (t_0)
+sp_lmat        <- 95.0   # Length constraint proxy triggering maturity transition
+sp_sig_mat     <- 4.5    # Logistic slope of maturation ogive curve
+sp_max_age     <- 50.0   # Asymptotic maximum age lifespan ceiling
+sp_pf          <- 0.68   # Sex ratio split (percent female)
+
+# --- Threat parameter constants (Fishery baseline) ---
+cmp_mu         <- 15.0   # Status quo mean annual longline interaction rate
+cmp_nu         <- 0.15   # CMP dispersion factor
+
+# --- Multi-option conservation portfolio parameters ---
+# These need to be agreed upon with ZS and SM; should we pick a single species of turtle?
+# Option A: Nest Protection (Caging)
+optA_nests_saved      <- 35     # Extra nests saved annually from beach predators
+sp_clutch_size        <- 95     # Mean eggs deposited per clutch
+sp_hatch_success      <- 0.72   # Hatching success probability (under protection)
+sp_hatch_to_yearling  <- 0.025  # First-year pelagic survival rate baseline
+
+# Option B: Headstarting Program
+optB_headstarts_released <- 150 # Yearling juveniles reared and released annually, potential to do 3 months, 6 months, etc.
+optB_release_age         <- 2.0 # Age at release (skips early mortality)
+
+# Option C: Cessation of Poaching (nesting adults)
+optC_adults_saved        <- 6   # Mature nesting females rescued from harvest annually
+
+# Option D: Gear Avoidance Modifications (interaction rate reduction)
+optD_cmp_mu_mitigated    <- 4.5 # Mitigated interaction rate (e.g., bait/depth shifts)
+
+# Option E: Safe handling practices (mortality rate reduction)
+optE_mort_min            <- 0.05 # Lower post-release mortality bounds via circle hooks
+optE_mort_max            <- 0.18 # Upper post-release mortality bounds via circle hooks
+
+# Save environment for the next page
+save.image("pva_state.RData")
+```

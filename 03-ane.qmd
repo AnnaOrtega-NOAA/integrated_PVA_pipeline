@@ -1,0 +1,81 @@
+---
+title: "Phase III: Retrospective Demographics (ANE)"
+---
+
+```r
+#| label: load-state
+#| echo: false
+load("pva_state.RData")
+library(dplyr)
+```
+
+To accurately project population impacts, we must calculate the "ghost life" of historic bycatch. This symmetric inversion logic maps carapace length to an explicit age class to find an individual's Adult Nester Equivalent (ANE).
+
+```r
+#| label: ane-calculator
+#| code-summary: "Retrospective Demographic Conversions (ANE)"
+
+# ===============================
+# 4. The Age and ANE Calculator
+# ===============================
+message(">>> Processing retrospective demographic historical conversions...")
+
+# combining the data into a master spreadsheet of every interaction, lengths/mortalities when known, or filled in
+all_turtles <- data.frame()
+for(yr in unique(mock_safe$Year)) {
+  obs_yr    <- mock_observer %>% filter(Year == yr)
+  total_est <- mock_safe %>% filter(Year == yr) %>% pull(Total_Est)
+  n_unobs   <- max(0, total_est - nrow(obs_yr))
+
+  if(nrow(obs_yr) > 0) {
+    all_turtles <- rbind(all_turtles, data.frame(Year = yr, Length = obs_yr$SCL_raw, Mortality = obs_yr$M_mu))
+  }
+  if(n_unobs > 0) {
+    all_turtles <- rbind(all_turtles, data.frame(Year = yr, Length = rnorm(n_unobs, mean = 74, sd = 7), Mortality = runif(n_unobs, 0.45, 0.55)))
+  }
+}
+
+# the loop of the dead, processing every turtle and tracks its ghost life in the future
+sp_ledger <- data.frame()
+for (i in 1:nrow(all_turtles)) {
+  c_year <- all_turtles$Year[i]
+
+  # symmetric inversion logic: Mapping carapace length to explicit age class
+  age_start <- sp_tknot - (1 / sp_k) * log(1 - (pmin(all_turtles$Length[i], sp_linf - 0.1) / sp_linf))
+  if(is.nan(age_start) || is.na(age_start)) age_start <- sp_max_age - 2
+
+  # mapping the turtle's future path, what would its life have looked like?
+  future_years <- seq(c_year, max(hist_years))
+  l_y          <- length(future_years)
+  if(l_y < 1) next
+
+  # ages the turtle 1 year for each step and projects the growth (length) in those future years
+  ages_traj <- seq(age_start, length.out = l_y, by = 1)
+  lens_traj <- ifelse(ages_traj >= sp_max_age, rep(sp_linf * 0.99, l_y), sp_linf * (1 - exp(-sp_k * (ages_traj - sp_tknot))))
+
+  # maturity tipping point, an adult cannot go back to a juvenile
+  p_mat   <- 1.0 / (1.0 + exp(-(lens_traj - sp_lmat) / sp_sig_mat))
+  p_binom <- rbinom(l_y, 1, p_mat)
+  if(any(p_binom == 1)) p_binom[min(which(p_binom == 1)):l_y] <- 1
+
+  # calculating cumulative survival, a turtle could have died naturally... would it still be alive?
+  surv_vector <- cumprod((1 - p_binom) * sp_ane_pj + p_binom * sp_ane_pa)
+
+  # final calculation that an individual animal is X proportion of an ANE
+  sr <- surv_vector * p_binom * sp_pf * all_turtles$Mortality[i] * (1 / sp_remig_int)
+  # probability that the turtle would still be alive, mature enough to lay eggs, female, severity of interaction, nesting frequency
+  sp_ledger <- rbind(sp_ledger, data.frame(CalendarYear = future_years, ANE = sr))
+}
+
+#summarizes the historical damage, adds up every single fractional loss from every single turtle in a calendar year
+final_historical_ane <- sp_ledger %>% group_by(CalendarYear) %>% summarise(Total_ANE = sum(ANE), .groups = "drop")
+
+mock_posteriors_adj <- list(
+  U = mock_posteriors$U + 0.0022, # adding back in the old fishery take (Martin et al., 2020)
+  Q = mock_posteriors$Q * 0.94 # removing the man-made volatility of spikes (Martin et al., 2020)
+)
+# adding back in the turtles that should be alive to compare no fishery counterfactual (the ghosts)
+start_pop_draws_adj <- start_pop_draws + (tail(final_historical_ane$Total_ANE, 1) * sp_remig_int)
+
+save.image("pva_state.RData")
+```
