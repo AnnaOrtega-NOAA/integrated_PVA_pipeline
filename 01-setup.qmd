@@ -17,7 +17,7 @@ library(truncnorm) # statistical probability distributions
 library(jagsUI) # Bayesian modeling
 
 # --- Establish directory routing  ---
-out_dir <- paste0(getwd(), "/EcolApps_Output")
+out_dir <- paste0(getwd(), "/Output")
 if(!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 message("Initialization successful. Directing output to: ", out_dir)
 
